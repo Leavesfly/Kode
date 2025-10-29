@@ -1,0 +1,22 @@
+# Koder Core模块配置
+
+spring:
+  application:
+    name: koder-core
+  
+  # Jackson配置
+  jackson:
+    serialization:
+      indent-output: true
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+    default-property-inclusion: non_null
+
+# 日志配置
+logging:
+  level:
+    io.leavesfly.koder: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
