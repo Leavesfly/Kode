@@ -15,6 +15,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
@@ -42,9 +43,11 @@ import java.util.Optional;
 @Component
 public class AgentExecutionTool extends AbstractTool<AgentExecutionTool.Input, AgentExecutionTool.Output> {
 
+    @Lazy
     @Autowired
     private AgentExecutor agentExecutor;
     
+    @Lazy
     @Autowired
     private AIQueryService aiQueryService;
 

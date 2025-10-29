@@ -42,7 +42,7 @@ public class AgentsCommandEnhanced implements Command {
     private final AIQueryService aiQueryService;
     private final ToolExecutor toolExecutor;
     private final AgentExecutor agentExecutor;
-    private final REPLSession session;
+    // REPLSession不是Bean，从 CommandContext 中获取
     
     private static final List<String> RESERVED_NAMES = List.of(
             "help", "exit", "quit", "agents", "task", "model", "config", "tools", "mcp"
@@ -517,6 +517,13 @@ public class AgentsCommandEnhanced implements Command {
             
             context.getOutput().println("─".repeat(70));
             context.getOutput().println("\n执行中...\n");
+            
+            // 获取当前会话
+            Object sessionObj = context.getSession();
+            if (!(sessionObj instanceof REPLSession)) {
+                return CommandResult.failure("未找到当前会话");
+            }
+            REPLSession session = (REPLSession) sessionObj;
             
             // 4. 创建用户消息
             session.addMessage(UserMessage.builder()

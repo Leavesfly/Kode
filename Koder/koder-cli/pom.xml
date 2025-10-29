@@ -97,7 +97,18 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
                     <mainClass>io.leavesfly.koder.cli.KoderCliApplication</mainClass>
+                    <!-- 生成可执行JAR -->
+                    <executable>true</executable>
+                    <!-- JAR文件名 -->
+                    <finalName>koder</finalName>
                 </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
