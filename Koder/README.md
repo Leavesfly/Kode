@@ -19,10 +19,20 @@ Koder/
 - **Java**: 17
 - **构建工具**: Maven 3.9+
 - **框架**: Spring Boot 3.2+
+- **AI集成**: Spring AI 1.0.0-M1
 - **终端UI**: JLine 3.x
 - **JSON处理**: Jackson 2.x
 - **HTTP客户端**: Spring WebClient
 - **日志**: SLF4J + Logback
+
+## 核心特性
+
+- ✅ **多模型支持**: 集成DeepSeek、通义千问(Qwen)、Ollama三种LLM
+- ✅ **智能工具系统**: 提供文件操作、命令执行、搜索、LLM对话等工具
+- ✅ **CLI交互**: 强大的REPL命令系统
+- ✅ **MCP集成**: 支持Model Context Protocol
+- ✅ **代理系统**: 内置七个专用智能代理
+- ✅ **流式响应**: 支持实时流式输出
 
 ## 快速开始
 
@@ -100,11 +110,68 @@ koder>
 
 可用命令：
 - `/help` - 显示帮助信息
+- `/llm` - 与LLM对话（支持DeepSeek、Qwen、Ollama）
 - `/model` - 查看或切换AI模型
 - `/agents` - 管理智能代理
 - `/config` - 配置管理
 - `/mcp` - MCP服务器管理
 - `/exit` - 退出程序
+
+## LLM集成快速开始
+
+Koder已集成Spring AI框架，支持多种LLM提供商。
+
+### 1. 配置API密钥
+
+**DeepSeek（推荐，性价比高）**
+
+```bash
+export DEEPSEEK_API_KEY=your_api_key
+```
+
+**通义千问（中文能力强）**
+
+```bash
+export QWEN_API_KEY=your_api_key
+```
+
+**Ollama（本地部署，免费）**
+
+```bash
+# 安装Ollama
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# 拉取模型
+ollama pull llama2
+
+# 启动服务
+ollama serve
+```
+
+### 2. 使用LLM功能
+
+```bash
+# 基本对话
+/llm 解释一下什么是依赖注入
+
+# 指定提供商
+/llm -p qwen 请用中文回答：什么是Spring Boot
+
+# 带系统提示词
+/llm -s "你是一个Java专家" 如何优化这段代码
+
+# 查看服务状态
+/llm --status
+
+# 健康检查
+/llm --health
+```
+
+### 3. 详细文档
+
+- [LLM快速开始](doc/LLM_QUICKSTART.md) - 5分钟快速上手指南
+- [LLM集成指南](doc/LLM_INTEGRATION_GUIDE.md) - 完整配置和使用指南
+- [配置示例](doc/application-llm.yml) - 详细的配置示例
 
 ## 模块集成
 
@@ -119,12 +186,32 @@ ModuleIntegrationInitializer (Order=1)
   ├→ 初始化工具系统 (ToolExecutor)
   ├→ 初始化代理系统 (AgentRegistry)
   ├→ 初始化MCP系统 (MCPClientManager)
+  ├→ 初始化LLM系统 (LlmManager)
   └→ 验证集成完整性
   ↓
 REPLEngine (启动REPL)
   ├→ CommandRegistry (命令路由)
   ├→ AIQueryService (AI查询)
   └→ TerminalRenderer (终端渲染)
+```
+
+### 代理执行流程
+
+```
+用户输入 → /agents run <type> <task>
+  ↓
+AgentsCommand → 解析命令参数
+  ↓
+AgentExecutor → 代理执行器
+  ├→ 1. 获取代理配置 (AgentRegistry)
+  ├→ 2. 准备上下文 (ToolUseContext)
+  ├→ 3. 过滤工具权限 (ToolExecutor)
+  ├→ 4. 选择LLM模型 (LlmManager)
+  ├→ 5. 构建LLM请求 (LlmChatRequest)
+  ├→ 6. 调用LLM推理 (DeepSeek/Qwen/Ollama)
+  └→ 7. 处理响应、执行工具
+  ↓
+返回结果 → AgentResponse
 ```
 
 ### 核心组件

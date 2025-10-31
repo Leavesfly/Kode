@@ -7,9 +7,6 @@ import io.leavesfly.koder.agent.executor.AgentExecutor;
 import io.leavesfly.koder.cli.command.Command;
 import io.leavesfly.koder.cli.command.CommandContext;
 import io.leavesfly.koder.cli.command.CommandResult;
-import io.leavesfly.koder.cli.repl.REPLSession;
-import io.leavesfly.koder.core.message.UserMessage;
-import io.leavesfly.koder.tool.Tool;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -34,7 +31,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @Component("agentsCommandEnhanced")
 @RequiredArgsConstructor
-public class AgentsCommandEnhanced implements Command {
+public class AgentsCommand implements Command {
 
     private final AgentRegistry agentRegistry;
 
