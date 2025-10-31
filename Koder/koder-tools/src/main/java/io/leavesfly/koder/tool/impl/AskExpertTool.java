@@ -91,8 +91,39 @@ public class AskExpertTool extends AbstractTool<AskExpertTool.Input, AskExpertTo
     public Flux<ToolResponse<Output>> call(Input input, ToolUseContext context) {
         return Flux.create(sink -> {
             try {
-                // TODO: 集成实际的模型管理器来调用专家模型
-                // 目前使用模拟响应
+                // 集成实际的模型管理器来调用专家模型
+                // 
+                // 实现思路:
+                // 1. 使用 ModelManager 获取专门的模型适配器
+                //    - reasoning 指针: 用于代码审查、架构分析
+                //    - quick 指针: 用于快速性能分析
+                //    - task 指针: 用于调试和问题解决
+                //
+                // 2. 根据 expert_type 选择合适的模型
+                //    String modelPointer = switch(input.expertType) {
+                //        case "code_review", "architecture" -> "reasoning";
+                //        case "performance" -> "quick";
+                //        case "debugging" -> "task";
+                //        default -> "main";
+                //    };
+                //
+                // 3. 构造专家提示词
+                //    String systemPrompt = buildExpertPrompt(input.expertType, input.question);
+                //
+                // 4. 调用模型适配器
+                //    ModelAdapter adapter = modelManager.getModelAdapterByPointer(modelPointer)
+                //        .orElseThrow(() -> new RuntimeException("未找到模型"));
+                //
+                // 5. 执行查询
+                //    List<Message> messages = List.of(UserMessage.builder()
+                //        .content(input.question + "\n\n" + (input.context != null ? input.context : ""))
+                //        .build());
+                //    adapter.query(messages, systemPrompt, null, Map.of())
+                //        .collectList()
+                //        .map(chunks -> extractAnswer(chunks));
+                //
+                // 目前使用模拟实现，待集成 ModelManager 后替换
+                
                 String expertType = input.expertType != null ? input.expertType : "general";
                 String answer = generateMockExpertAnswer(input.question, expertType, input.context);
 
@@ -117,7 +148,7 @@ public class AskExpertTool extends AbstractTool<AskExpertTool.Input, AskExpertTo
 
     /**
      * 生成模拟专家回答
-     * TODO: 替换为实际的模型调用
+     * 此方法将在集成 ModelManager 后被替换
      */
     private String generateMockExpertAnswer(String question, String expertType, String context) {
         return String.format("""
@@ -135,6 +166,7 @@ public class AskExpertTool extends AbstractTool<AskExpertTool.Input, AskExpertTo
                 %s
                 
                 注意: 这是一个模拟回复。实际应用中需要集成真实的专家模型。
+                实现方案: 集成 ModelManager，使用 reasoning/task/quick 模型指针
                 """,
                 expertType,
                 question,

@@ -40,9 +40,9 @@ public class MCPCommand implements Command {
         output.append("\n=== MCP服务器状态 ===\n\n");
 
         // 获取所有配置
-        var serverNames = mcpClientManager.getAllClients().keySet();
+        var serverConfigs = mcpClientManager.getAllServerConfigs();
         
-        if (serverNames.isEmpty()) {
+        if (serverConfigs.isEmpty()) {
             output.append("暂无配置的MCP服务器\n\n");
             output.append("提示: 在配置文件中添加MCP服务器配置\n");
             return CommandResult.success(output.toString());
@@ -52,14 +52,15 @@ public class MCPCommand implements Command {
         var clients = mcpClientManager.getAllClients();
         
         // 显示每个服务器的状态
-        for (var serverName : serverNames) {
+        for (var config : serverConfigs) {
+            String serverName = config.getName();
             var client = clients.get(serverName);
             
             boolean isConnected = client != null && client.isConnected();
             String status = isConnected ? "✅ 已连接" : "❌ 未连接";
             
             output.append("  • ").append(serverName).append(": ").append(status);
-            // output.append(" (").append(config.getType()).append(")"); // TODO: 获取配置类型
+            output.append(" (").append(config.getType()).append(")");
             output.append("\n");
             
             // 显示可用工具数量
@@ -67,17 +68,15 @@ public class MCPCommand implements Command {
                 try {
                     var tools = client.listTools().block();
                     if (tools != null) {
-                        output.append(" - ").append(tools.size()).append("个工具");
+                        output.append("    - ").append(tools.size()).append("个工具\n");
                     }
                 } catch (Exception e) {
-                    output.append(" - 工具列表获取失败");
+                    output.append("    - 工具列表获取失败\n");
                 }
             }
-            
-            output.append("\n");
         }
         
-        output.append("\n总计: ").append(serverNames.size()).append(" 个服务器");
+        output.append("\n总计: ").append(serverConfigs.size()).append(" 个服务器");
         output.append(", ").append(clients.size()).append(" 个已连接\n");
 
         return CommandResult.success(output.toString());

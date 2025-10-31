@@ -96,6 +96,13 @@ public class GlobalConfig {
     private boolean verbose = false;
     
     /**
+     * 安全模式（需要用户确认危险操作）
+     */
+    @JsonProperty("safeMode")
+    @Builder.Default
+    private Boolean safeMode = false;
+    
+    /**
      * 自定义API密钥响应
      */
     @JsonProperty("customApiKeyResponses")

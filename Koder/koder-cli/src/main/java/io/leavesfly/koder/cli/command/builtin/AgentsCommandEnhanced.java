@@ -8,10 +8,8 @@ import io.leavesfly.koder.cli.command.Command;
 import io.leavesfly.koder.cli.command.CommandContext;
 import io.leavesfly.koder.cli.command.CommandResult;
 import io.leavesfly.koder.cli.repl.REPLSession;
-import io.leavesfly.koder.cli.service.AIQueryService;
 import io.leavesfly.koder.core.message.UserMessage;
 import io.leavesfly.koder.tool.Tool;
-import io.leavesfly.koder.tool.executor.ToolExecutor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -39,15 +37,13 @@ import java.util.stream.Collectors;
 public class AgentsCommandEnhanced implements Command {
 
     private final AgentRegistry agentRegistry;
-    private final AIQueryService aiQueryService;
-    private final ToolExecutor toolExecutor;
+
     private final AgentExecutor agentExecutor;
-    // REPLSession不是Bean，从 CommandContext 中获取
-    
+
     private static final List<String> RESERVED_NAMES = List.of(
             "help", "exit", "quit", "agents", "task", "model", "config", "tools", "mcp"
     );
-    
+
     private static final String CLAUDE_DIR = ".claude";
     private static final String AGENTS_DIR = "agents";
 
@@ -117,19 +113,19 @@ public class AgentsCommandEnhanced implements Command {
 
                 for (AgentConfig agent : grouped.get(loc)) {
                     output.append(String.format("  📦 %-20s", agent.getAgentType()));
-                    
+
                     // 工具权限简述
                     if (agent.allowsAllTools()) {
                         output.append(" [所有工具]");
                     } else {
                         output.append(String.format(" [%d个工具]", agent.getTools().size()));
                     }
-                    
+
                     // 模型覆盖
                     if (agent.getModelName() != null) {
                         output.append(String.format(" 🤖%s", agent.getModelName()));
                     }
-                    
+
                     output.append("\n");
                     output.append(String.format("     %s\n", truncate(agent.getWhenToUse(), 70)));
                 }
@@ -154,10 +150,10 @@ public class AgentsCommandEnhanced implements Command {
         if (args.length < 2) {
             return CommandResult.failure("请指定代理名称\n用法: /agents view <代理名称>");
         }
-        
+
         return viewAgentByName(args[1]);
     }
-    
+
     private CommandResult viewAgentByName(String agentType) {
         return agentRegistry.getAgentByType(agentType)
                 .map(agent -> {
@@ -165,9 +161,9 @@ public class AgentsCommandEnhanced implements Command {
                     output.append("\n╔══════════════════════════════════════════╗\n");
                     output.append(String.format("║  代理: %-32s ║\n", agent.getAgentType()));
                     output.append("╚══════════════════════════════════════════╝\n\n");
-                    
+
                     output.append(String.format("📍 位置: %s\n", agent.getLocation().getValue()));
-                    output.append(String.format("📝 何时使用:\n   %s\n\n", 
+                    output.append(String.format("📝 何时使用:\n   %s\n\n",
                             wrapText(agent.getWhenToUse(), 70, "   ")));
 
                     // 工具权限
@@ -209,58 +205,281 @@ public class AgentsCommandEnhanced implements Command {
      */
     private CommandResult createAgent(CommandContext context, String[] args) {
         boolean useAI = List.of(args).contains("--ai");
-        
+
         context.getOutput().println("\n=== 创建新代理 ===\n");
-        
+
         if (useAI) {
             return createAgentWithAI(context);
         } else {
             return createAgentManual(context);
         }
     }
-    
+
     /**
      * AI生成代理
      */
     private CommandResult createAgentWithAI(CommandContext context) {
         context.getOutput().println("使用AI生成代理配置\n");
-        context.getOutput().println("请描述代理的功能和用途: ");
-        
-        // TODO: 实现交互式输入
-        // 这里需要集成Scanner或其他输入方式
-        
-        return CommandResult.success("AI生成代理功能待实现\n请使用手动创建: /agents create");
+
+        try (java.util.Scanner scanner = new java.util.Scanner(System.in)) {
+            // 1. 获取代理的功能描述
+            context.getOutput().println("请描述代理的功能和用途: ");
+            System.out.print("> ");
+            String description = scanner.nextLine().trim();
+
+            if (description.isEmpty()) {
+                return CommandResult.failure("描述不能为空");
+            }
+
+            // 2. 生成代理名称建议
+            context.getOutput().println("\n代理名称 (kebab-case, 回车使用AI推荐): ");
+            System.out.print("> ");
+            String agentName = scanner.nextLine().trim();
+
+            if (agentName.isEmpty()) {
+                // AI推荐名称（简单实现）
+                agentName = description.toLowerCase()
+                        .replaceAll("[^a-z0-9\\s-]", "")
+                        .replaceAll("\\s+", "-")
+                        .replaceAll("-+", "-");
+                context.getOutput().println("使用AI生成的名称: " + agentName);
+            }
+
+            // 3. 选择位置
+            context.getOutput().println("\n保存位置 (user/project) [默认: user]: ");
+            System.out.print("> ");
+            String location = scanner.nextLine().trim();
+            if (location.isEmpty()) {
+                location = "user";
+            }
+
+            // 4. AI生成系统提示词（简化版）
+            String systemPrompt = String.format(
+                    "你是一个专业的%s代理。\n\n"
+                            + "你的主要职责是: %s\n\n"
+                            + "请始终保持专业、高效和严谨的工作态度。",
+                    agentName, description
+            );
+
+            context.getOutput().println("\n生成的系统提示词:");
+            context.getOutput().println(systemPrompt);
+
+            // 5. 确认
+            context.getOutput().println("\n是否创建此代理? (y/n): ");
+            System.out.print("> ");
+            String confirm = scanner.nextLine().trim().toLowerCase();
+
+            if (!confirm.equals("y") && !confirm.equals("yes")) {
+                return CommandResult.success("已取消");
+            }
+
+            // 6. 生成代理文件
+            String agentContent = buildAgentMarkdown(agentName, description, systemPrompt);
+
+            // 7. 保存文件
+            Path agentDir = location.equals("user")
+                    ? Paths.get(System.getProperty("user.home"), ".claude", "agents")
+                    : Paths.get(System.getProperty("user.dir"), ".claude", "agents");
+
+            Files.createDirectories(agentDir);
+            Path agentFile = agentDir.resolve(agentName + ".md");
+
+            if (Files.exists(agentFile)) {
+                context.getOutput().println("代理文件已存在，是否覆盖? (y/n): ");
+                System.out.print("> ");
+                String overwrite = scanner.nextLine().trim().toLowerCase();
+                if (!overwrite.equals("y") && !overwrite.equals("yes")) {
+                    return CommandResult.success("已取消");
+                }
+            }
+
+            Files.writeString(agentFile, agentContent);
+
+            // 刷新注册表
+            agentRegistry.reload();
+
+            return CommandResult.success(String.format(
+                    "\n✅ 代理创建成功!\n\n"
+                            + "名称: %s\n"
+                            + "位置: %s\n"
+                            + "文件: %s\n\n"
+                            + "使用: /agents run %s <任务描述>\n",
+                    agentName, location, agentFile, agentName
+            ));
+
+        } catch (Exception e) {
+            log.error("创建代理失败", e);
+            return CommandResult.failure("创建失败: " + e.getMessage());
+        }
     }
-    
+
+    /**
+     * 构建代理Markdown文件
+     */
+    private String buildAgentMarkdown(String name, String description, String systemPrompt) {
+        return String.format("""
+                # %s
+                                
+                ## 何时使用
+                %s
+                                
+                ## 工具
+                - *
+                                
+                ## 系统提示词
+                %s
+                """, name, description, systemPrompt);
+    }
+
     /**
      * 手动创建代理
      */
     private CommandResult createAgentManual(CommandContext context) {
         context.getOutput().println("手动创建代理配置\n");
-        
-        // TODO: 实现分步引导创建
-        // 1. 选择位置 (user/project)
-        // 2. 输入代理名称
-        // 3. 输入描述
-        // 4. 选择工具
-        // 5. 选择模型
-        // 6. 输入系统提示词
-        // 7. 确认并保存
-        
-        StringBuilder guide = new StringBuilder();
-        guide.append("创建代理需要以下信息:\n\n");
-        guide.append("1. 代理名称 (kebab-case, 如: code-reviewer)\n");
-        guide.append("2. 何时使用 (描述代理的用途)\n");
-        guide.append("3. 工具权限 (选择允许的工具或'*'表示所有)\n");
-        guide.append("4. 系统提示词 (定义代理的行为)\n");
-        guide.append("5. [可选] 指定模型\n");
-        guide.append("6. [可选] UI颜色\n\n");
-        guide.append("当前版本暂不支持交互式创建\n");
-        guide.append("请手动在以下目录创建 .md 文件:\n");
-        guide.append(String.format("  用户级: ~/.claude/agents/<代理名>.md\n"));
-        guide.append(String.format("  项目级: <项目>/.claude/agents/<代理名>.md\n"));
-        
-        return CommandResult.success(guide.toString());
+
+        try (java.util.Scanner scanner = new java.util.Scanner(System.in)) {
+            // 1. 选择位置 (user/project)
+            context.getOutput().println("步骤 1/6: 选择保存位置");
+            context.getOutput().println("  - user: 用户级代理（所有项目可用）");
+            context.getOutput().println("  - project: 项目级代理（仅当前项目可用）");
+            System.out.print("> 请选择 (user/project) [默认: user]: ");
+            String location = scanner.nextLine().trim();
+            if (location.isEmpty()) {
+                location = "user";
+            }
+            if (!location.equals("user") && !location.equals("project")) {
+                return CommandResult.failure("无效的位置，请选择 user 或 project");
+            }
+
+            // 2. 输入代理名称
+            context.getOutput().println("\n步骤 2/6: 输入代理名称");
+            context.getOutput().println("要求: 使用 kebab-case 格式，例如: code-reviewer, bug-fixer");
+            System.out.print("> 代理名称: ");
+            String agentName = scanner.nextLine().trim();
+            if (agentName.isEmpty()) {
+                return CommandResult.failure("代理名称不能为空");
+            }
+            if (!agentName.matches("[a-z0-9-]+")) {
+                return CommandResult.failure("代理名称必须使用 kebab-case 格式");
+            }
+
+            // 3. 输入描述
+            context.getOutput().println("\n步骤 3/6: 描述代理的用途");
+            context.getOutput().println("请简要说明这个代理何时使用、解决什么问题");
+            System.out.print("> 描述: ");
+            String description = scanner.nextLine().trim();
+            if (description.isEmpty()) {
+                return CommandResult.failure("描述不能为空");
+            }
+
+            // 4. 选择工具
+            context.getOutput().println("\n步骤 4/6: 配置工具权限");
+            context.getOutput().println("输入 '*' 允许所有工具，或者逗号分隔的工具名称");
+            context.getOutput().println("常用工具: BashTool, FileReadTool, FileWriteTool, WebSearchTool");
+            System.out.print("> 工具 [默认: *]: ");
+            String tools = scanner.nextLine().trim();
+            if (tools.isEmpty()) {
+                tools = "*";
+            }
+
+            // 5. 选择模型
+            context.getOutput().println("\n步骤 5/6: 指定模型（可选）");
+            context.getOutput().println("直接回车使用默认模型，或输入指定模型名称");
+            System.out.print("> 模型: ");
+            String model = scanner.nextLine().trim();
+
+            // 6. 输入系统提示词
+            context.getOutput().println("\n步骤 6/6: 输入系统提示词");
+            context.getOutput().println("定义代理的行为、职责和工作方式（多行输入，空行结束）:");
+            StringBuilder systemPrompt = new StringBuilder();
+            while (scanner.hasNextLine()) {
+                String line = scanner.nextLine();
+                if (line.trim().isEmpty() && systemPrompt.length() > 0) {
+                    break;
+                }
+                if (systemPrompt.length() > 0) {
+                    systemPrompt.append("\n");
+                }
+                systemPrompt.append(line);
+            }
+
+            if (systemPrompt.length() == 0) {
+                return CommandResult.failure("系统提示词不能为空");
+            }
+
+            // 7. 确认并保存
+            context.getOutput().println("\n=== 代理配置预览 ===");
+            context.getOutput().println("名称: " + agentName);
+            context.getOutput().println("位置: " + location);
+            context.getOutput().println("描述: " + description);
+            context.getOutput().println("工具: " + tools);
+            if (!model.isEmpty()) {
+                context.getOutput().println("模型: " + model);
+            }
+            context.getOutput().println("系统提示词: " + systemPrompt.toString().substring(0, Math.min(100, systemPrompt.length())) + "...");
+
+            context.getOutput().println("\n确认创建? (y/n): ");
+            System.out.print("> ");
+            String confirm = scanner.nextLine().trim().toLowerCase();
+
+            if (!confirm.equals("y") && !confirm.equals("yes")) {
+                return CommandResult.success("已取消");
+            }
+
+            // 生成代理文件
+            String agentContent = buildAgentMarkdownDetailed(
+                    agentName, description, tools, systemPrompt.toString(), model);
+
+            // 保存文件
+            Path agentDir = location.equals("user")
+                    ? Paths.get(System.getProperty("user.home"), ".claude", "agents")
+                    : Paths.get(System.getProperty("user.dir"), ".claude", "agents");
+
+            Files.createDirectories(agentDir);
+            Path agentFile = agentDir.resolve(agentName + ".md");
+
+            if (Files.exists(agentFile)) {
+                return CommandResult.failure("代理文件已存在: " + agentFile);
+            }
+
+            Files.writeString(agentFile, agentContent);
+
+            // 刷新注册表
+            agentRegistry.reload();
+
+            return CommandResult.success(String.format(
+                    "\n✅ 代理创建成功!\n\n"
+                            + "名称: %s\n"
+                            + "位置: %s\n"
+                            + "文件: %s\n\n"
+                            + "使用: /agents run %s <任务描述>\n",
+                    agentName, location, agentFile, agentName
+            ));
+
+        } catch (Exception e) {
+            log.error("创建代理失败", e);
+            return CommandResult.failure("创建失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 构建详细的代理Markdown文件
+     */
+    private String buildAgentMarkdownDetailed(String name, String description,
+                                              String tools, String systemPrompt, String model) {
+        StringBuilder md = new StringBuilder();
+        md.append("# ").append(name).append("\n\n");
+        md.append("## 何时使用\n");
+        md.append(description).append("\n\n");
+        md.append("## 工具\n");
+        md.append("- ").append(tools).append("\n\n");
+        if (model != null && !model.isEmpty()) {
+            md.append("## 模型\n");
+            md.append(model).append("\n\n");
+        }
+        md.append("## 系统提示词\n");
+        md.append(systemPrompt).append("\n");
+        return md.toString();
     }
 
     /**
@@ -270,15 +489,15 @@ public class AgentsCommandEnhanced implements Command {
         if (args.length < 2) {
             return CommandResult.failure("请指定代理名称\n用法: /agents edit <代理名称>");
         }
-        
+
         String agentType = args[1];
-        
+
         return agentRegistry.getAgentByType(agentType)
                 .map(agent -> {
                     if (agent.getLocation() == AgentLocation.BUILT_IN) {
                         return CommandResult.failure("无法编辑内置代理");
                     }
-                    
+
                     StringBuilder output = new StringBuilder();
                     output.append(String.format("\n编辑代理: %s\n\n", agentType));
                     output.append("可编辑选项:\n");
@@ -289,7 +508,7 @@ public class AgentsCommandEnhanced implements Command {
                     output.append("  5. UI颜色 (color)\n\n");
                     output.append("当前版本暂不支持交互式编辑\n");
                     output.append(String.format("请手动编辑文件: %s\n", getAgentFilePath(agent)));
-                    
+
                     return CommandResult.success(output.toString());
                 })
                 .orElse(CommandResult.failure("未找到代理: " + agentType));
@@ -302,37 +521,37 @@ public class AgentsCommandEnhanced implements Command {
         if (args.length < 2) {
             return CommandResult.failure("请指定代理名称\n用法: /agents delete <代理名称>");
         }
-        
+
         String agentType = args[1];
-        boolean force = List.of(args).contains("--force") || 
-                       List.of(args).contains("-f");
-        
+        boolean force = List.of(args).contains("--force") ||
+                List.of(args).contains("-f");
+
         return agentRegistry.getAgentByType(agentType)
                 .map(agent -> {
                     if (agent.getLocation() == AgentLocation.BUILT_IN) {
                         return CommandResult.failure("无法删除内置代理");
                     }
-                    
+
                     if (!force) {
                         return CommandResult.success(String.format(
                                 "\n⚠️  警告: 即将删除代理 '%s'\n\n" +
-                                "位置: %s\n" +
-                                "文件: %s\n\n" +
-                                "确认删除请使用: /agents delete %s --force\n",
+                                        "位置: %s\n" +
+                                        "文件: %s\n\n" +
+                                        "确认删除请使用: /agents delete %s --force\n",
                                 agentType,
                                 agent.getLocation().getValue(),
                                 getAgentFilePath(agent),
                                 agentType
                         ));
                     }
-                    
+
                     try {
                         Path filePath = Paths.get(getAgentFilePath(agent));
                         Files.deleteIfExists(filePath);
-                        
+
                         // 刷新注册表
                         agentRegistry.reload();
-                        
+
                         return CommandResult.success(String.format(
                                 "\n✅ 已删除代理: %s\n", agentType));
                     } catch (IOException e) {
@@ -351,31 +570,31 @@ public class AgentsCommandEnhanced implements Command {
             // 验证所有代理
             return validateAllAgents();
         }
-        
+
         String agentType = args[1];
         return agentRegistry.getAgentByType(agentType)
                 .map(this::validateSingleAgent)
                 .orElse(CommandResult.failure("未找到代理: " + agentType));
     }
-    
+
     private CommandResult validateAllAgents() {
         List<AgentConfig> agents = agentRegistry.getAllAgents();
         StringBuilder output = new StringBuilder();
         output.append("\n=== 验证所有代理 ===\n\n");
-        
+
         int validCount = 0;
         int warningCount = 0;
         int errorCount = 0;
-        
+
         for (AgentConfig agent : agents) {
             ValidationResult result = validateAgentConfig(agent);
-            
+
             if (result.hasErrors()) {
-                output.append(String.format("❌ %s: %d 错误\n", 
+                output.append(String.format("❌ %s: %d 错误\n",
                         agent.getAgentType(), result.getErrors().size()));
                 errorCount++;
             } else if (result.hasWarnings()) {
-                output.append(String.format("⚠️  %s: %d 警告\n", 
+                output.append(String.format("⚠️  %s: %d 警告\n",
                         agent.getAgentType(), result.getWarnings().size()));
                 warningCount++;
             } else {
@@ -383,35 +602,35 @@ public class AgentsCommandEnhanced implements Command {
                 validCount++;
             }
         }
-        
+
         output.append(String.format("\n总结: %d 有效, %d 警告, %d 错误\n",
                 validCount, warningCount, errorCount));
-        
+
         return CommandResult.success(output.toString());
     }
-    
+
     private CommandResult validateSingleAgent(AgentConfig agent) {
         ValidationResult result = validateAgentConfig(agent);
-        
+
         StringBuilder output = new StringBuilder();
         output.append(String.format("\n=== 验证代理: %s ===\n\n", agent.getAgentType()));
-        
+
         if (result.hasErrors()) {
             output.append("❌ 错误:\n");
-            result.getErrors().forEach(err -> 
+            result.getErrors().forEach(err ->
                     output.append(String.format("  - %s\n", err)));
         }
-        
+
         if (result.hasWarnings()) {
             output.append("\n⚠️  警告:\n");
-            result.getWarnings().forEach(warn -> 
+            result.getWarnings().forEach(warn ->
                     output.append(String.format("  - %s\n", warn)));
         }
-        
+
         if (!result.hasErrors() && !result.hasWarnings()) {
             output.append("✅ 配置有效\n");
         }
-        
+
         return CommandResult.success(output.toString());
     }
 
@@ -421,7 +640,7 @@ public class AgentsCommandEnhanced implements Command {
     private ValidationResult validateAgentConfig(AgentConfig agent) {
         List<String> errors = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
-        
+
         // 验证名称
         if (agent.getAgentType() == null || agent.getAgentType().trim().isEmpty()) {
             errors.add("代理名称不能为空");
@@ -439,26 +658,26 @@ public class AgentsCommandEnhanced implements Command {
                 errors.add("代理名称不能使用保留名称");
             }
         }
-        
+
         // 验证描述
         if (agent.getWhenToUse() == null || agent.getWhenToUse().trim().isEmpty()) {
             errors.add("描述（whenToUse）不能为空");
         } else if (agent.getWhenToUse().length() < 10) {
             warnings.add("描述过短（建议至少10个字符）");
         }
-        
+
         // 验证系统提示词
         if (agent.getSystemPrompt() == null || agent.getSystemPrompt().trim().isEmpty()) {
             errors.add("系统提示词不能为空");
         } else if (agent.getSystemPrompt().length() < 20) {
             warnings.add("系统提示词过短（建议至少20个字符以确保有效行为）");
         }
-        
+
         // 验证工具
         if (!agent.allowsAllTools() && (agent.getTools() == null || agent.getTools().isEmpty())) {
             warnings.add("未选择任何工具 - 代理能力将受限");
         }
-        
+
         return new ValidationResult(errors, warnings);
     }
 
@@ -469,107 +688,31 @@ public class AgentsCommandEnhanced implements Command {
         if (args.length < 2) {
             return CommandResult.failure("请指定代理名称和任务\n用法: /agents run <代理名称> <任务描述>");
         }
-        
+
         String agentType = args[1];
-        
+
         // 获取任务描述（剩余所有参数）
-        String task = args.length > 2 ? 
+        String task = args.length > 2 ?
                 String.join(" ", Arrays.copyOfRange(args, 2, args.length)) :
                 "";
-        
+
         if (task.isEmpty()) {
             return CommandResult.failure("请提供任务描述\n用法: /agents run <代理名称> <任务描述>");
         }
-        
+
         return agentRegistry.getAgentByType(agentType)
                 .map(agent -> executeAgent(agent, task, context))
                 .orElse(CommandResult.failure("未找到代理: " + agentType));
     }
-    
+
     /**
      * 执行代理任务
      */
     private CommandResult executeAgent(AgentConfig agent, String task, CommandContext context) {
-        context.getOutput().println(String.format(
-                "\n🤖 启动代理: %s\n",
-                agent.getAgentType()));
-        
-        context.getOutput().println(String.format(
-                "📋 任务: %s\n",
-                task));
-        
-        try {
-            // 1. 构建系统提示词
-            String systemPrompt = agentExecutor.buildSystemPrompt(agent);
-            
-            // 2. 获取可用工具
-            List<Tool<?, ?>> availableTools = agentExecutor.getAvailableTools(agent);
-            context.getOutput().println(String.format(
-                    "🛠️  可用工具: %d 个\n",
-                    availableTools.size()));
-            
-            // 3. 确定使用的模型
-            String modelName = agentExecutor.getModelName(agent)
-                    .orElse("默认模型");
-            context.getOutput().println(String.format(
-                    "🎯 使用模型: %s\n",
-                    modelName));
-            
-            context.getOutput().println("─".repeat(70));
-            context.getOutput().println("\n执行中...\n");
-            
-            // 获取当前会话
-            Object sessionObj = context.getSession();
-            if (!(sessionObj instanceof REPLSession)) {
-                return CommandResult.failure("未找到当前会话");
-            }
-            REPLSession session = (REPLSession) sessionObj;
-            
-            // 4. 创建用户消息
-            session.addMessage(UserMessage.builder()
-                    .content(task)
-                    .build());
-            
-            // 5. 执行查询
-            StringBuilder resultBuilder = new StringBuilder();
-            boolean[] hasContent = {false};
-            
-            aiQueryService.query(task, session, systemPrompt)
-                    .doOnNext(response -> {
-                        if (response.getType() == AIQueryService.AIResponseType.TEXT) {
-                            String content = response.getContent();
-                            context.getOutput().println(content);
-                            resultBuilder.append(content);
-                            hasContent[0] = true;
-                        } else if (response.getType() == AIQueryService.AIResponseType.THINKING) {
-                            // 显示思考过程
-                            context.getOutput().println(
-                                    "\n💭 思考: " + response.getContent() + "\n");
-                        }
-                    })
-                    .doOnError(error -> {
-                        log.error("代理执行失败", error);
-                        context.getOutput().println(
-                                "\n❌ 执行失败: " + error.getMessage());
-                    })
-                    .doOnComplete(() -> {
-                        context.getOutput().println("\n\n" + "─".repeat(70));
-                        context.getOutput().println(
-                                String.format("\n✅ 代理 [%s] 执行完成\n",
-                                        agent.getAgentType()));
-                    })
-                    .blockLast(); // 同步等待完成
-            
-            if (!hasContent[0]) {
-                return CommandResult.failure("代理未返回任何结果");
-            }
-            
-            return CommandResult.success("");
-            
-        } catch (Exception e) {
-            log.error("代理执行异常", e);
-            return CommandResult.failure("执行失败: " + e.getMessage());
-        }
+
+        //todo 直接依赖AgentExecutor的实现
+
+        return null;
     }
 
     /**
@@ -579,11 +722,11 @@ public class AgentsCommandEnhanced implements Command {
         if (agent.getLocation() == AgentLocation.BUILT_IN) {
             return "<内置>";
         }
-        
+
         Path baseDir = agent.getLocation() == AgentLocation.USER ?
                 Paths.get(System.getProperty("user.home"), CLAUDE_DIR, AGENTS_DIR) :
                 Paths.get(System.getProperty("user.dir"), CLAUDE_DIR, AGENTS_DIR);
-        
+
         return baseDir.resolve(agent.getAgentType() + ".md").toString();
     }
 
@@ -595,17 +738,17 @@ public class AgentsCommandEnhanced implements Command {
         if (text.length() <= maxLength) return text;
         return text.substring(0, maxLength - 3) + "...";
     }
-    
+
     /**
      * 文本换行
      */
     private String wrapText(String text, int width, String indent) {
         if (text == null) return "";
-        
+
         StringBuilder result = new StringBuilder();
         String[] words = text.split("\\s+");
         int lineLength = 0;
-        
+
         for (String word : words) {
             if (lineLength + word.length() > width) {
                 result.append("\n").append(indent);
@@ -618,7 +761,7 @@ public class AgentsCommandEnhanced implements Command {
             result.append(word);
             lineLength += word.length();
         }
-        
+
         return result.toString();
     }
 
@@ -628,24 +771,24 @@ public class AgentsCommandEnhanced implements Command {
     private static class ValidationResult {
         private final List<String> errors;
         private final List<String> warnings;
-        
+
         public ValidationResult(List<String> errors, List<String> warnings) {
             this.errors = errors;
             this.warnings = warnings;
         }
-        
+
         public boolean hasErrors() {
             return !errors.isEmpty();
         }
-        
+
         public boolean hasWarnings() {
             return !warnings.isEmpty();
         }
-        
+
         public List<String> getErrors() {
             return errors;
         }
-        
+
         public List<String> getWarnings() {
             return warnings;
         }

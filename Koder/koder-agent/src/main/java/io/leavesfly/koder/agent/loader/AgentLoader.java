@@ -32,29 +32,6 @@ public class AgentLoader {
 
     private final ObjectMapper yamlMapper = new ObjectMapper(new YAMLFactory());
 
-    // 内置通用代理
-    private static final AgentConfig BUILTIN_GENERAL_PURPOSE = AgentConfig.builder()
-            .agentType("general-purpose")
-            .whenToUse("General-purpose agent for researching complex questions, searching for code, and executing multi-step tasks")
-            .tools(List.of("*"))
-            .systemPrompt("""
-                    你是一个通用代理。给定用户的任务，使用可用的工具高效彻底地完成它。
-                    
-                    何时使用你的能力：
-                    - 在大型代码库中搜索代码、配置和模式
-                    - 分析多个文件以理解系统架构
-                    - 调查需要探索多个文件的复杂问题
-                    - 执行多步骤研究任务
-                    
-                    指南：
-                    - 对于文件搜索：当需要广泛搜索时使用Grep或Glob。当知道具体文件路径时使用FileRead。
-                    - 对于分析：从广泛开始，然后缩小范围。如果第一次没有产生结果，使用多种搜索策略。
-                    - 要彻底：检查多个位置，考虑不同的命名约定，寻找相关文件。
-                    - 直接使用你的能力完成任务。
-                    """)
-            .location(AgentConfig.AgentLocation.BUILT_IN)
-            .build();
-
     /**
      * 加载所有代理配置
      */
@@ -62,7 +39,13 @@ public class AgentLoader {
         Map<String, AgentConfig> agentMap = new LinkedHashMap<>();
 
         // 1. 内置代理（最低优先级）
-        agentMap.put(BUILTIN_GENERAL_PURPOSE.getAgentType(), BUILTIN_GENERAL_PURPOSE);
+        // 1.1 通用代理（fallback）
+        agentMap.put("general-purpose", createBuiltinGeneralPurposeAgent());
+        
+        // 1.2 专用内置代理
+        for (AgentConfig builtinAgent : BuiltinAgents.getAllBuiltinAgents()) {
+            agentMap.put(builtinAgent.getAgentType(), builtinAgent);
+        }
 
         // 2. ~/.claude/agents（Claude Code用户目录兼容）
         loadAgentsFromDirectory(
@@ -210,9 +193,36 @@ public class AgentLoader {
     }
 
     /**
-     * 获取内置通用代理
+     * 创建内置通用代理
+     */
+    private AgentConfig createBuiltinGeneralPurposeAgent() {
+        return AgentConfig.builder()
+                .agentType("general-purpose")
+                .whenToUse("General-purpose agent for researching complex questions, searching for code, and executing multi-step tasks")
+                .tools(List.of("*"))
+                .systemPrompt("""
+                        你是一个通用代理。给定用户的任务，使用可用的工具高效彻底地完成它。
+                        
+                        何时使用你的能力：
+                        - 在大型代码库中搜索代码、配置和模式
+                        - 分析多个文件以理解系统架构
+                        - 调查需要探索多个文件的复杂问题
+                        - 执行多步骤研究任务
+                        
+                        指南：
+                        - 对于文件搜索：当需要广泛搜索时使用Grep或Glob。当知道具体文件路径时使用FileRead。
+                        - 对于分析：从广泛开始，然后缩小范围。如果第一次没有产生结果，使用多种搜索策略。
+                        - 要彻底：检查多个位置，考虑不同的命名约定，寻找相关文件。
+                        - 直接使用你的能力完成任务。
+                        """)
+                .location(AgentConfig.AgentLocation.BUILT_IN)
+                .build();
+    }
+
+    /**
+     * 获取内置通用代理（保持向后兼容）
      */
     public AgentConfig getBuiltinGeneralPurposeAgent() {
-        return BUILTIN_GENERAL_PURPOSE;
+        return createBuiltinGeneralPurposeAgent();
     }
 }

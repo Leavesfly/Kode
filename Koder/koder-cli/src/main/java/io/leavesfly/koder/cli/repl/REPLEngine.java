@@ -3,9 +3,8 @@ package io.leavesfly.koder.cli.repl;
 import io.leavesfly.koder.cli.command.CommandContext;
 import io.leavesfly.koder.cli.command.CommandRegistry;
 import io.leavesfly.koder.cli.command.CommandResult;
-import io.leavesfly.koder.cli.service.AIQueryService;
 import io.leavesfly.koder.cli.terminal.TerminalRenderer;
-import io.leavesfly.koder.core.message.UserMessage;
+import io.leavesfly.koder.tool.impl.BashTool;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jline.reader.*;
@@ -25,7 +24,8 @@ public class REPLEngine {
 
     private final CommandRegistry commandRegistry;
     private final TerminalRenderer renderer;
-    private final AIQueryService aiQueryService;
+
+    private final BashTool bashTool;
 
     private REPLSession session;
     private LineReader lineReader;
@@ -103,12 +103,77 @@ public class REPLEngine {
      * 处理输入
      */
     private boolean processInput(String input) {
+        // 检查是否为Bash模式（!开头）
+        if (input.startsWith("!")) {
+            String command = input.substring(1).trim();
+            if (!command.isEmpty()) {
+                return executeBashCommand(command);
+            }
+            return false;
+        }
+
         // 检查是否为命令
         if (commandRegistry.isCommand(input)) {
             return executeCommand(input);
         } else {
             return handleUserMessage(input);
         }
+    }
+
+    /**
+     * 执行Bash命令
+     */
+    private boolean executeBashCommand(String command) {
+        // 显示命令回显
+        renderer.println("! " + command);
+
+        try {
+            // 创建输入
+            BashTool.Input input = BashTool.Input.builder()
+                    .command(command)
+                    .build();
+
+            // 验证输入
+            var validationResult = bashTool.validateInput(input, null);
+            if (!validationResult.isResult()) {
+                renderer.printError(validationResult.getMessage());
+                return false;
+            }
+
+            // 执行命令
+            bashTool.call(input, null)
+                    .doOnNext(response -> {
+                        if (response.getData() != null) {
+                            BashTool.Output output = response.getData();
+
+                            // 显示标准输出
+                            if (!output.getStdout().isEmpty()) {
+                                renderer.println(output.getStdout());
+                            }
+
+                            // 显示标准错误
+                            if (!output.getStderr().isEmpty()) {
+                                renderer.printError(output.getStderr());
+                            }
+
+                            // 显示退出码（如果非0）
+                            if (output.getExitCode() != 0) {
+                                renderer.printWarning("退出码: " + output.getExitCode());
+                            }
+                        }
+                    })
+                    .doOnError(error -> {
+                        renderer.printError("命令执行失败: " + error.getMessage());
+                        log.error("Bash命令执行失败", error);
+                    })
+                    .blockLast(); // 阻塞等待完成
+
+        } catch (Exception e) {
+            renderer.printError("发生错误: " + e.getMessage());
+            log.error("执行Bash命令失败", e);
+        }
+
+        return false;
     }
 
     /**
@@ -172,42 +237,8 @@ public class REPLEngine {
             StringBuilder fullResponse = new StringBuilder();
             AtomicBoolean hasError = new AtomicBoolean(false);
 
-            // 调用AI查询
-            aiQueryService.query(input, session, systemPrompt)
-                    .doOnNext(response -> {
-                        switch (response.getType()) {
-                            case TEXT -> {
-                                // 显示文本响应
-                                renderer.println(response.getContent());
-                                fullResponse.append(response.getContent());
-                            }
-                            case TOOL_USE -> {
-                                // 显示工具调用
-                                renderer.printInfo("\n[调用工具: " + response.getToolName() + "]");
-                            }
-                            case THINKING -> {
-                                // 显示思考过程（如果启用详细模式）
-                                if (session.isVerbose()) {
-                                    renderer.printWarning("[思考] " + response.getContent());
-                                }
-                            }
-                            case COMPLETE -> {
-                                // 完成
-                                renderer.println("");
-                            }
-                        }
-                    })
-                    .doOnError(error -> {
-                        hasError.set(true);
-                        renderer.printError("\n错误: " + error.getMessage());
-                        log.error("AI查询失败", error);
-                    })
-                    .doOnComplete(() -> {
-                        if (!hasError.get() && fullResponse.length() == 0) {
-                            renderer.printWarning("\n(无响应)");
-                        }
-                    })
-                    .blockLast(); // 阻塞等待完成
+            // todo 调用AI查询
+
 
         } catch (Exception e) {
             renderer.printError("\n发生错误: " + e.getMessage());
@@ -243,11 +274,12 @@ public class REPLEngine {
      * 显示欢迎信息
      */
     private void showWelcome() {
-        renderer.println("\n" + 
+        renderer.println("\n" +
             "╔══════════════════════════════════════════╗\n" +
             "║        Koder - AI编程助手 (Java版)      ║\n" +
             "╚══════════════════════════════════════════╝\n");
         renderer.printInfo("输入 /help 查看帮助");
+        renderer.printInfo("输入 ! 开头可直接运行 shell 命令（如：!ls -la）");
         renderer.printInfo("输入 /exit 退出程序\n");
     }
 

@@ -185,9 +185,7 @@ public class MCPClientManager {
     /**
      * 获取所有服务器配置
      */
-    private List<MCPServerConfig> getAllServerConfigs() {
-        // TODO: 从GlobalConfig中读取所有MCP服务器配置
-        log.warn("MCP服务器配置列表未实现，返回空列表");
-        return List.of();
+    public List<MCPServerConfig> getAllServerConfigs() {
+        return getAllServerConfigsInternal();
     }
 }

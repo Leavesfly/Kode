@@ -42,19 +42,28 @@ public class MCPToolDiscoveryService implements CommandLineRunner {
      * 发现并注册MCP工具
      */
     public Mono<Integer> discoverAndRegisterTools() {
-        return clientManager.listAllTools()
-                .map(mcpTools -> {
+        return Mono.fromCallable(() -> clientManager.getAllServerConfigs())
+                .flatMapMany(reactor.core.publisher.Flux::fromIterable)
+                .flatMap(serverConfig -> 
+                    clientManager.getClient(serverConfig.getName())
+                            .flatMap(client -> client.listTools()
+                                    .map(tools -> new ServerTools(serverConfig.getName(), tools))
+                            )
+                            .onErrorResume(error -> {
+                                log.warn("获取MCP服务器 {} 的工具失败: {}", 
+                                        serverConfig.getName(), error.getMessage());
+                                return Mono.empty();
+                            })
+                )
+                .collectList()
+                .map(serverToolsList -> {
                     int count = 0;
-
-                    for (var entry : groupToolsByServer(mcpTools).entrySet()) {
-                        String serverName = entry.getKey();
-                        List<io.leavesfly.koder.mcp.protocol.MCPTool> tools = entry.getValue();
-
-                        for (var mcpTool : tools) {
+                    for (ServerTools serverTools : serverToolsList) {
+                        for (io.leavesfly.koder.mcp.protocol.MCPTool mcpTool : serverTools.tools) {
                             // 创建包装器
                             MCPToolWrapper wrapper = new MCPToolWrapper(
                                     mcpTool,
-                                    serverName,
+                                    serverTools.serverName,
                                     clientManager
                             );
 
@@ -62,12 +71,10 @@ public class MCPToolDiscoveryService implements CommandLineRunner {
                             toolExecutor.registerTool(wrapper);
 
                             log.debug("注册MCP工具: {} (来自服务器: {})",
-                                    wrapper.getName(), serverName);
-
+                                    wrapper.getName(), serverTools.serverName);
                             count++;
                         }
                     }
-
                     return count;
                 })
                 .onErrorResume(error -> {
@@ -77,13 +84,15 @@ public class MCPToolDiscoveryService implements CommandLineRunner {
     }
 
     /**
-     * 按服务器分组工具
+     * 服务器工具关联类
      */
-    private java.util.Map<String, List<io.leavesfly.koder.mcp.protocol.MCPTool>> groupToolsByServer(
-            List<io.leavesfly.koder.mcp.protocol.MCPTool> tools) {
-        
-        // TODO: 实际应该从工具元数据中提取服务器名称
-        // 目前简单返回一个默认分组
-        return java.util.Map.of("default", tools);
+    private static class ServerTools {
+        final String serverName;
+        final List<io.leavesfly.koder.mcp.protocol.MCPTool> tools;
+
+        ServerTools(String serverName, List<io.leavesfly.koder.mcp.protocol.MCPTool> tools) {
+            this.serverName = serverName;
+            this.tools = tools;
+        }
     }
 }

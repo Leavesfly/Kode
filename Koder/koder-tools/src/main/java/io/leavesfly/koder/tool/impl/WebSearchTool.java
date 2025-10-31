@@ -93,8 +93,45 @@ public class WebSearchTool extends AbstractTool<WebSearchTool.Input, WebSearchTo
     public Flux<ToolResponse<Output>> call(Input input, ToolUseContext context) {
         return Flux.create(sink -> {
             try {
-                // TODO: 集成实际的搜索API（如Google Custom Search, Bing API等）
-                // 当前使用模拟数据
+                // 集成实际的搜索API
+                // 
+                // 可选的搜索API集成方案:
+                //
+                // 1. Google Custom Search API
+                //    - 需要: Google API Key + Search Engine ID
+                //    - 配置: application.properties 或环境变量
+                //    - 示例: 
+                //      String apiKey = config.getGoogleApiKey();
+                //      String searchEngineId = config.getGoogleSearchEngineId();
+                //      String url = String.format(
+                //          "https://www.googleapis.com/customsearch/v1?key=%s&cx=%s&q=%s",
+                //          apiKey, searchEngineId, URLEncoder.encode(input.query, "UTF-8")
+                //      );
+                //
+                // 2. Bing Search API
+                //    - 需要: Azure Cognitive Services API Key
+                //    - 示例:
+                //      WebClient client = WebClient.builder()
+                //          .baseUrl("https://api.bing.microsoft.com/v7.0/search")
+                //          .defaultHeader("Ocp-Apim-Subscription-Key", apiKey)
+                //          .build();
+                //
+                // 3. DuckDuckGo Instant Answer API
+                //    - 免费，无需API Key
+                //    - URL: https://api.duckduckgo.com/?q={query}&format=json
+                //
+                // 4. SerpAPI
+                //    - 封装多种搜索引擎的统一API
+                //    - 支持 Google, Bing, Baidu 等
+                //
+                // 实现建议:
+                // - 使用 WebClient 进行 HTTP 请求
+                // - 配置超时和重试机制
+                // - 缓存搜索结果（避免API限制）
+                // - 解析JSON响应并提取标题、URL、摘要
+                //
+                // 目前使用模拟数据，待集成搜索API后替换
+                
                 int maxResults = input.maxResults != null ? input.maxResults : 5;
                 List<SearchResult> results = generateMockResults(input.query, maxResults);
 
@@ -118,7 +155,7 @@ public class WebSearchTool extends AbstractTool<WebSearchTool.Input, WebSearchTo
 
     /**
      * 生成模拟搜索结果
-     * TODO: 替换为实际的搜索API调用
+     * 此方法将在集成搜索API后被替换
      */
     private List<SearchResult> generateMockResults(String query, int maxResults) {
         List<SearchResult> results = new ArrayList<>();
@@ -131,6 +168,13 @@ public class WebSearchTool extends AbstractTool<WebSearchTool.Input, WebSearchTo
                             "包含相关信息和描述...", query, i + 1))
                     .build();
             results.add(result);
+        }
+        
+        // 添加模拟标记
+        if (!results.isEmpty()) {
+            SearchResult firstResult = results.get(0);
+            firstResult.setSnippet(firstResult.getSnippet() + 
+                    "\n\n⚠️ 注意: 这是模拟数据。集成搜索API后将返回真实结果。");
         }
 
         return results;

@@ -11,7 +11,7 @@
     <packaging>pom</packaging>
 
     <name>Koder Parent</name>
-    <description>Java重构版Kode终端AI助手 - 父POM</description>
+    <description>Koder终端AI助手</description>
 
     <properties>
         <!-- Java版本 -->
@@ -41,7 +41,6 @@
 
     <modules>
         <module>koder-core</module>
-        <module>koder-models</module>
         <module>koder-mcp</module>
         <module>koder-agent</module>
         <module>koder-tools</module>

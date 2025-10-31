@@ -69,7 +69,7 @@ public class ConfigCommand implements Command {
         GlobalConfig config = configManager.getGlobalConfig();
 
         String value = switch (key.toLowerCase()) {
-            // case "safemode" -> String.valueOf(config.getSafeMode()); // TODO: 添加safeMode字段
+            case "safemode" -> String.valueOf(config.getSafeMode());
             case "verbose" -> String.valueOf(config.isVerbose());
             default -> "未知配置项: " + key;
         };
@@ -82,7 +82,7 @@ public class ConfigCommand implements Command {
         GlobalConfig config = configManager.getGlobalConfig();
 
         switch (key.toLowerCase()) {
-            // case "safemode" -> config.setSafeMode(Boolean.parseBoolean(value)); // TODO: 添加safeMode字段
+            case "safemode" -> config.setSafeMode(Boolean.parseBoolean(value));
             case "verbose" -> config.setVerbose(Boolean.parseBoolean(value));
             default -> {
                 return CommandResult.failure("未知配置项: " + key);
